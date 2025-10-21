@@ -9,7 +9,7 @@ declare(strict_types=1);
  * existing ServiceManager configuration instead of the demo one.
  */
 
-use AiSupaScan\LaminasServicesCli\Application;
+use Smoobu\LaminasServiceScanner\Application;
 use Laminas\ServiceManager\ServiceManager;
 use Laminas\Config\Config;
 

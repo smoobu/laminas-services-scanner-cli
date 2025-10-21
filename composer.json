@@ -21,12 +21,12 @@
     },
     "autoload": {
         "psr-4": {
-            "AiSupaScan\\LaminasServicesCli\\": "src/"
+            "Smoobu\\LaminasServiceScanner\\": "src/"
         }
     },
     "autoload-dev": {
         "psr-4": {
-            "AiSupaScan\\LaminasServicesCli\\Tests\\": "tests/"
+            "Smoobu\\LaminasServiceScanner\\Tests\\": "tests/"
         }
     },
     "bin": [

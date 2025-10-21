@@ -15,7 +15,7 @@ A command-line tool for inspecting and displaying all registered services in a L
 ## Installation
 
 ```bash
-composer require aisupascan/laminas-services-cli
+composer require smoobu/laminas-services-scanner-cli
 ```
 
 ## Usage
@@ -54,7 +54,7 @@ To use this tool with your existing Laminas application, you need to create a cu
 #!/usr/bin/env php
 <?php
 
-use AiSupaScan\LaminasServicesCli\Application;
+use Smoobu\LaminasServiceScanner\Application;
 use YourApp\ServiceManagerFactory;
 
 // Include your application's autoloader

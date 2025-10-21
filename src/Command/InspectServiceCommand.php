@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace AiSupaScan\LaminasServicesCli\Command;
+namespace Smoobu\LaminasServiceScanner\Command;
 
 use Laminas\ServiceManager\ServiceManager;
 use Symfony\Component\Console\Attribute\AsCommand;

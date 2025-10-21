@@ -9,7 +9,7 @@ declare(strict_types=1);
  * by using the application's ServiceManager.
  */
 
-use AiSupaScan\LaminasServicesCli\Application;
+use Smoobu\LaminasServiceScanner\Application;
 use Laminas\Mvc\Application as MvcApplication;
 
 // Include your Laminas MVC application's bootstrap

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace AiSupaScan\LaminasServicesCli;
+namespace Smoobu\LaminasServiceScanner;
 
 use Laminas\ServiceManager\ServiceManager;
 use Symfony\Component\Console\Application as BaseApplication;
