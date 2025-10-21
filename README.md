@@ -190,7 +190,7 @@ Context:  ...$db = $this->getDi('database');...
 
 ## Requirements
 
-- PHP 8.1 or higher
+- PHP 7.4 or higher
 - Laminas ServiceManager 3.0 or higher
 - Symfony Console 6.0 or higher
 
