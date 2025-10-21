@@ -1,12 +1,12 @@
 {
-    "name": "aisupascan/laminas-services-cli",
+    "name": "smoobu/laminas-services-scanner-cli",
     "description": "CLI tool to inspect and display all registered services in a Laminas container",
     "type": "library",
     "license": "MIT",
     "authors": [
         {
-            "name": "AiSupaScan",
-            "email": "info@aisupascan.com"
+            "name": "Patryk Cwiklinski",
+            "email": "patryk.cwiklinski.ext@smoobu.com"
         }
     ],
     "require": {
