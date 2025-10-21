@@ -30,6 +30,7 @@ class InspectServiceCommand extends Command
         $this
             ->addArgument('service', InputArgument::REQUIRED, 'The service name to inspect')
             ->addOption('instantiate', 'i', InputOption::VALUE_NONE, 'Try to instantiate the service to get more details')
+            ->addOption('show-hidden-deps', 's', InputOption::VALUE_NONE, 'Scan for hidden dependencies using SR\\Di (AbstractDi/DiTrait)')
             ->setHelp('This command provides detailed information about a specific service.');
     }
 
@@ -38,6 +39,7 @@ class InspectServiceCommand extends Command
         $io = new SymfonyStyle($input, $output);
         $serviceName = $input->getArgument('service');
         $instantiate = $input->getOption('instantiate');
+        $showHiddenDeps = $input->getOption('show-hidden-deps');
 
         try {
             if (!$this->serviceManager->has($serviceName)) {
@@ -45,7 +47,7 @@ class InspectServiceCommand extends Command
                 return Command::FAILURE;
             }
 
-            $this->displayServiceDetails($io, $serviceName, $instantiate);
+            $this->displayServiceDetails($io, $serviceName, $instantiate, $showHiddenDeps);
 
         } catch (\Exception $e) {
             $io->error('Error inspecting service: ' . $e->getMessage());
@@ -55,7 +57,7 @@ class InspectServiceCommand extends Command
         return Command::SUCCESS;
     }
 
-    private function displayServiceDetails(SymfonyStyle $io, string $serviceName, bool $instantiate): void
+    private function displayServiceDetails(SymfonyStyle $io, string $serviceName, bool $instantiate, bool $showHiddenDeps): void
     {
         $io->title(sprintf('Service: %s', $serviceName));
 
@@ -102,6 +104,11 @@ class InspectServiceCommand extends Command
 
         // Show related services (aliases pointing to this service)
         $this->displayRelatedServices($io, $serviceName);
+
+        // Show hidden dependencies if requested
+        if ($showHiddenDeps) {
+            $this->displayHiddenDependencies($io, $serviceName);
+        }
     }
 
     private function displayServiceInstance(SymfonyStyle $io, mixed $service): void
@@ -169,5 +176,167 @@ class InspectServiceCommand extends Command
         } catch (\Exception $e) {
             // Ignore errors when getting related services
         }
+    }
+
+    private function displayHiddenDependencies(SymfonyStyle $io, string $serviceName): void
+    {
+        $io->section('Hidden Dependencies Analysis');
+        
+        try {
+            $service = $this->serviceManager->get($serviceName);
+            
+            if (!is_object($service)) {
+                $io->note('Service is not an object, cannot analyze hidden dependencies.');
+                return;
+            }
+
+            $reflection = new \ReflectionClass($service);
+            $hiddenDeps = $this->analyzeHiddenDependencies($reflection);
+            
+            if (empty($hiddenDeps)) {
+                $io->success('No hidden dependencies found using SR\\Di.');
+                return;
+            }
+
+            $io->warning(sprintf('Found %d hidden dependency(ies):', count($hiddenDeps)));
+            
+            foreach ($hiddenDeps as $dep) {
+                $io->definitionList([
+                    'Service' => $dep['service'],
+                    'File' => $dep['file'],
+                    'Line' => $dep['line'],
+                    'Context' => $dep['context'],
+                ]);
+                $io->newLine();
+            }
+            
+        } catch (\Exception $e) {
+            $io->error('Error analyzing hidden dependencies: ' . $e->getMessage());
+        }
+    }
+
+    private function analyzeHiddenDependencies(\ReflectionClass $reflection): array
+    {
+        $hiddenDeps = [];
+        
+        // Check if class extends SR\Di\AbstractDi or uses SR\Di\DiTrait
+        if (!$this->usesSRDi($reflection)) {
+            return $hiddenDeps;
+        }
+        
+        // Analyze current class and all parent classes
+        $classesToAnalyze = [$reflection];
+        
+        // Add parent classes
+        $parent = $reflection->getParentClass();
+        while ($parent) {
+            $classesToAnalyze[] = $parent;
+            $parent = $parent->getParentClass();
+        }
+
+        foreach ($classesToAnalyze as $class) {
+            $filePath = $class->getFileName();
+            if (!$filePath || !file_exists($filePath)) {
+                continue;
+            }
+
+            $deps = $this->scanFileForHiddenDeps($filePath, $class->getName());
+            $hiddenDeps = array_merge($hiddenDeps, $deps);
+        }
+
+        return $hiddenDeps;
+    }
+
+    private function usesSRDi(\ReflectionClass $reflection): bool
+    {
+        // Check if extends SR\Di\AbstractDi
+        $parent = $reflection;
+        while ($parent) {
+            if ($parent->getName() === 'SR\Di\AbstractDi') {
+                return true;
+            }
+            $parent = $parent->getParentClass();
+        }
+
+        // Check if uses SR\Di\DiTrait
+        $traits = $this->getAllTraits($reflection);
+        foreach ($traits as $trait) {
+            if ($trait->getName() === 'SR\Di\DiTrait') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function getAllTraits(\ReflectionClass $reflection): array
+    {
+        $traits = [];
+        
+        // Get traits from current class
+        $traits = array_merge($traits, $reflection->getTraits());
+        
+        // Get traits from parent classes
+        $parent = $reflection->getParentClass();
+        while ($parent) {
+            $traits = array_merge($traits, $parent->getTraits());
+            $parent = $parent->getParentClass();
+        }
+
+        return $traits;
+    }
+
+    private function scanFileForHiddenDeps(string $filePath, string $className): array
+    {
+        $hiddenDeps = [];
+        $content = file_get_contents($filePath);
+        
+        if (!$content) {
+            return $hiddenDeps;
+        }
+
+        $lines = explode("\n", $content);
+        
+        // Pattern to match $this->getDi() calls
+        $pattern = '/\$this\s*->\s*getDi\s*\(\s*[\'"]([^\'"]+)[\'"]?\s*\)/';
+        
+        foreach ($lines as $lineNumber => $line) {
+            if (preg_match_all($pattern, $line, $matches, PREG_OFFSET_CAPTURE)) {
+                foreach ($matches[1] as $match) {
+                    $serviceName = $match[0];
+                    $offset = $match[1];
+                    
+                    // Get context around the match
+                    $context = $this->getContextAroundMatch($line, $offset);
+                    
+                    $hiddenDeps[] = [
+                        'service' => $serviceName,
+                        'file' => $filePath,
+                        'line' => $lineNumber + 1,
+                        'context' => $context,
+                    ];
+                }
+            }
+        }
+
+        return $hiddenDeps;
+    }
+
+    private function getContextAroundMatch(string $line, int $offset, int $contextLength = 50): string
+    {
+        $start = max(0, $offset - $contextLength);
+        $end = min(strlen($line), $offset + $contextLength);
+        
+        $context = substr($line, $start, $end - $start);
+        
+        // Add ellipsis if we truncated
+        if ($start > 0) {
+            $context = '...' . $context;
+        }
+        if ($end < strlen($line)) {
+            $context = $context . '...';
+        }
+        
+        return trim($context);
     }
 }

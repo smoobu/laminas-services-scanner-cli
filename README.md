@@ -10,6 +10,7 @@ A command-line tool for inspecting and displaying all registered services in a L
 - Show service types (service, alias, factory, invokable)
 - Display reflection information for service instances
 - Find aliases pointing to specific services
+- **Hidden Dependencies Analysis**: Scan for SR\Di usage and find hidden dependencies via `$this->getDi()` calls
 
 ## Installation
 
@@ -94,11 +95,13 @@ Inspects a specific service in detail.
 
 **Options:**
 - `--instantiate, -i`: Try to instantiate the service to get more details
+- `--show-hidden-deps, -s`: Scan for hidden dependencies using SR\Di (AbstractDi/DiTrait)
 
 **Examples:**
 ```bash
 ./bin/laminas-services services:inspect logger
 ./bin/laminas-services services:inspect db --instantiate
+./bin/laminas-services services:inspect my-service --show-hidden-deps
 ```
 
 ## Service Types
@@ -109,6 +112,21 @@ The tool recognizes the following service types:
 - **alias**: Service aliases pointing to other services
 - **factory**: Services created by factory classes
 - **invokable**: Services created by instantiating a class directly
+
+## Hidden Dependencies Analysis
+
+The `--show-hidden-deps` option scans services for hidden dependencies using the SR\Di pattern. This feature:
+
+1. **Detects SR\Di Usage**: Checks if a service extends `SR\Di\AbstractDi` or uses `SR\Di\DiTrait`
+2. **Scans Source Code**: Analyzes the service's source code and all parent classes for `$this->getDi()` method calls
+3. **Reports Dependencies**: Shows which services are being accessed through the DI container within the service code
+4. **Provides Context**: Displays the file, line number, and surrounding code context for each hidden dependency
+
+This is particularly useful for:
+- Understanding service dependencies that aren't declared in the ServiceManager configuration
+- Identifying services that use the SR\Di pattern for dependency injection
+- Debugging complex service relationships
+- Refactoring services to use explicit dependency injection
 
 ## Output Examples
 
@@ -150,6 +168,24 @@ Short Name:   class@anonymous
 Is Abstract:  No
 Is Interface: No
 Is Trait:     No
+```
+
+### Hidden Dependencies Analysis
+```
+Hidden Dependencies Analysis
+===========================
+
+⚠ Found 2 hidden dependency(ies):
+
+Service:  logger
+File:     /path/to/MyService.php
+Line:     45
+Context:  ...$this->getDi('logger')->info('Processing data')...
+
+Service:  database
+File:     /path/to/MyService.php
+Line:     78
+Context:  ...$db = $this->getDi('database');...
 ```
 
 ## Requirements
