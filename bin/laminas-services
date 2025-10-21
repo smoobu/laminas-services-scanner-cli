@@ -1,0 +1,46 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+use AiSupaScan\LaminasServicesCli\Application;
+use Laminas\ServiceManager\ServiceManager;
+
+// Include Composer autoloader
+require_once __DIR__ . '/../vendor/autoload.php';
+
+// Create a basic ServiceManager for demonstration
+// In real usage, you would configure this with your actual services
+$serviceManager = new ServiceManager([
+    'services' => [
+        'config' => [
+            'app' => [
+                'name' => 'Laminas Services CLI Demo',
+                'version' => '1.0.0'
+            ]
+        ],
+        'logger' => new class {
+            public function log(string $message): void
+            {
+                echo "LOG: $message\n";
+            }
+        }
+    ],
+    'invokables' => [
+        'DateTime' => DateTime::class,
+        'ArrayObject' => ArrayObject::class,
+    ],
+    'factories' => [
+        'stdClass' => function() {
+            return new stdClass();
+        },
+    ],
+    'aliases' => [
+        'log' => 'logger',
+        'date' => 'DateTime',
+    ]
+]);
+
+// Create and run the application
+$application = new Application($serviceManager);
+$application->run();
