@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Smoobu\LaminasServiceScanner\Command;
 
-use Laminas\ServiceManager\ServiceManager;
+use Smoobu\LaminasServiceScanner\Interface\ServiceReaderInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
@@ -19,7 +19,7 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 class ListServicesCommand extends Command
 {
     public function __construct(
-        private ServiceManager $serviceManager
+        private ServiceReaderInterface $serviceReader
     ) {
         parent::__construct();
     }
@@ -42,7 +42,7 @@ class ListServicesCommand extends Command
         $detailed = $input->getOption('detailed');
 
         try {
-            $services = $this->getServices($filter, $type);
+            $services = $this->serviceReader->getServices($filter, $type);
             
             if (empty($services)) {
                 $io->warning('No services found matching the criteria.');
@@ -65,96 +65,6 @@ class ListServicesCommand extends Command
         return Command::SUCCESS;
     }
 
-    private function getServices(?string $filter, ?string $type): array
-    {
-        $services = [];
-        
-        // Get all registered service names
-        $registeredServices = $this->serviceManager->getRegisteredServices();
-        
-        foreach ($registeredServices as $serviceName) {
-            // Apply filter if provided
-            if ($filter && !str_contains(strtolower($serviceName), strtolower($filter))) {
-                continue;
-            }
-
-            try {
-                $serviceInfo = $this->getServiceInfo($serviceName);
-                
-                // Apply type filter if provided
-                if ($type && $serviceInfo['type'] !== $type) {
-                    continue;
-                }
-                
-                $services[$serviceName] = $serviceInfo;
-            } catch (\Exception $e) {
-                // Skip services that can't be inspected
-                $services[$serviceName] = [
-                    'type' => 'unknown',
-                    'class' => 'Error: ' . $e->getMessage(),
-                    'is_shared' => false,
-                    'is_aliased' => false,
-                    'aliases' => []
-                ];
-            }
-        }
-
-        ksort($services);
-        return $services;
-    }
-
-    private function getServiceInfo(string $serviceName): array
-    {
-        $info = [
-            'type' => 'service',
-            'class' => 'unknown',
-            'is_shared' => false,
-            'is_aliased' => false,
-            'aliases' => []
-        ];
-
-        try {
-            // Check if it's an alias
-            if ($this->serviceManager->hasAlias($serviceName)) {
-                $info['type'] = 'alias';
-                $info['is_aliased'] = true;
-                $info['class'] = $this->serviceManager->getAlias($serviceName);
-                return $info;
-            }
-
-            // Check if it's a factory
-            if ($this->serviceManager->hasFactory($serviceName)) {
-                $info['type'] = 'factory';
-                $factory = $this->serviceManager->getFactory($serviceName);
-                $info['class'] = is_object($factory) ? get_class($factory) : (string) $factory;
-            }
-
-            // Check if it's an invokable
-            if ($this->serviceManager->hasInvokableClass($serviceName)) {
-                $info['type'] = 'invokable';
-                $info['class'] = $this->serviceManager->getInvokableClass($serviceName);
-            }
-
-            // Check if it's a service
-            if ($this->serviceManager->has($serviceName)) {
-                $service = $this->serviceManager->get($serviceName);
-                if (is_object($service)) {
-                    $info['class'] = get_class($service);
-                } else {
-                    $info['class'] = gettype($service);
-                }
-            }
-
-            // Check if it's shared
-            $info['is_shared'] = $this->serviceManager->isShared($serviceName);
-
-        } catch (\Exception $e) {
-            $info['class'] = 'Error: ' . $e->getMessage();
-        }
-
-        return $info;
-    }
-
     private function displaySimpleServices(SymfonyStyle $io, array $services): void
     {
         $io->title('Registered Services');
@@ -162,11 +72,11 @@ class ListServicesCommand extends Command
         $table = $io->createTable();
         $table->setHeaders(['Service Name', 'Type', 'Class/Value']);
         
-        foreach ($services as $name => $info) {
+        foreach ($services as $serviceInfo) {
             $table->addRow([
-                $name,
-                $info['type'],
-                $info['class']
+                $serviceInfo->name,
+                $serviceInfo->type,
+                $serviceInfo->class
             ]);
         }
         
@@ -177,17 +87,29 @@ class ListServicesCommand extends Command
     {
         $io->title('Detailed Service Information');
         
-        foreach ($services as $name => $info) {
-            $io->section($name);
+        foreach ($services as $serviceInfo) {
+            $io->section($serviceInfo->name);
             
             $details = [
-                'Type' => $info['type'],
-                'Class/Value' => $info['class'],
-                'Shared' => $info['is_shared'] ? 'Yes' : 'No',
+                'Type' => $serviceInfo->type,
+                'Class/Value' => $serviceInfo->class,
+                'Shared' => $serviceInfo->isShared ? 'Yes' : 'No',
             ];
             
-            if ($info['is_aliased']) {
-                $details['Aliases'] = implode(', ', $info['aliases']);
+            if ($serviceInfo->isAliased) {
+                $details['Aliases'] = implode(', ', $serviceInfo->aliases);
+            }
+            
+            if ($serviceInfo->factory) {
+                $details['Factory'] = $serviceInfo->factory;
+            }
+            
+            if ($serviceInfo->invokableClass) {
+                $details['Invokable Class'] = $serviceInfo->invokableClass;
+            }
+            
+            if ($serviceInfo->hasError()) {
+                $details['Error'] = $serviceInfo->error;
             }
             
             $io->definitionList($details);

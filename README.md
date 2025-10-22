@@ -64,7 +64,7 @@ require_once __DIR__ . '/vendor/autoload.php';
 $serviceManager = ServiceManagerFactory::create();
 
 // Create and run the application
-$application = new Application($serviceManager);
+$application = Application::createWithLaminasServiceManager($serviceManager);
 $application->run();
 ```
 

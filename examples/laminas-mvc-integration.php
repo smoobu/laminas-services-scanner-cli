@@ -24,7 +24,7 @@ try {
     $serviceManager = $mvcApplication->getServiceManager();
     
     // Create and run the CLI application
-    $cliApplication = new Application($serviceManager);
+    $cliApplication = Application::createWithLaminasServiceManager($serviceManager);
     $cliApplication->run();
     
 } catch (\Exception $e) {

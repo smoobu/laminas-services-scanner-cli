@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Smoobu\LaminasServiceScanner\Command;
 
-use Laminas\ServiceManager\ServiceManager;
+use Smoobu\LaminasServiceScanner\Interface\ServiceReaderInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputArgument;
@@ -20,7 +20,7 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 class InspectServiceCommand extends Command
 {
     public function __construct(
-        private ServiceManager $serviceManager
+        private ServiceReaderInterface $serviceReader
     ) {
         parent::__construct();
     }
@@ -42,7 +42,7 @@ class InspectServiceCommand extends Command
         $showHiddenDeps = $input->getOption('show-hidden-deps');
 
         try {
-            if (!$this->serviceManager->has($serviceName)) {
+            if (!$this->serviceReader->hasService($serviceName)) {
                 $io->error(sprintf('Service "%s" is not registered in the container.', $serviceName));
                 return Command::FAILURE;
             }
@@ -61,32 +61,34 @@ class InspectServiceCommand extends Command
     {
         $io->title(sprintf('Service: %s', $serviceName));
 
+        $serviceInfo = $this->serviceReader->getService($serviceName);
+        if (!$serviceInfo) {
+            $io->error('Service not found');
+            return;
+        }
+
         // Basic service information
         $details = [
-            'Name' => $serviceName,
-            'Registered' => $this->serviceManager->has($serviceName) ? 'Yes' : 'No',
+            'Name' => $serviceInfo->name,
+            'Type' => $serviceInfo->type,
+            'Class/Value' => $serviceInfo->class,
+            'Shared' => $serviceInfo->isShared ? 'Yes' : 'No',
         ];
 
-        // Check if it's an alias
-        if ($this->serviceManager->hasAlias($serviceName)) {
-            $details['Type'] = 'Alias';
-            $details['Target'] = $this->serviceManager->getAlias($serviceName);
-        } else {
-            $details['Type'] = 'Service';
+        if ($serviceInfo->isAlias()) {
+            $details['Target'] = $serviceInfo->class;
         }
 
-        // Check if it's shared
-        $details['Shared'] = $this->serviceManager->isShared($serviceName) ? 'Yes' : 'No';
-
-        // Check if it has a factory
-        if ($this->serviceManager->hasFactory($serviceName)) {
-            $factory = $this->serviceManager->getFactory($serviceName);
-            $details['Factory'] = is_object($factory) ? get_class($factory) : (string) $factory;
+        if ($serviceInfo->factory) {
+            $details['Factory'] = $serviceInfo->factory;
         }
 
-        // Check if it's an invokable
-        if ($this->serviceManager->hasInvokableClass($serviceName)) {
-            $details['Invokable Class'] = $this->serviceManager->getInvokableClass($serviceName);
+        if ($serviceInfo->invokableClass) {
+            $details['Invokable Class'] = $serviceInfo->invokableClass;
+        }
+
+        if ($serviceInfo->hasError()) {
+            $details['Error'] = $serviceInfo->error;
         }
 
         $io->definitionList($details);
@@ -95,7 +97,7 @@ class InspectServiceCommand extends Command
         if ($instantiate) {
             $io->section('Service Instance');
             try {
-                $service = $this->serviceManager->get($serviceName);
+                $service = $this->serviceReader->getServiceInstance($serviceName);
                 $this->displayServiceInstance($io, $service);
             } catch (\Exception $e) {
                 $io->error('Failed to instantiate service: ' . $e->getMessage());
@@ -158,14 +160,11 @@ class InspectServiceCommand extends Command
         $aliases = [];
         
         try {
-            $registeredServices = $this->serviceManager->getRegisteredServices();
+            $allServices = $this->serviceReader->getAllServices();
             
-            foreach ($registeredServices as $registeredService) {
-                if ($this->serviceManager->hasAlias($registeredService)) {
-                    $aliasTarget = $this->serviceManager->getAlias($registeredService);
-                    if ($aliasTarget === $serviceName) {
-                        $aliases[] = $registeredService;
-                    }
+            foreach ($allServices as $serviceInfo) {
+                if ($serviceInfo->isAlias() && $serviceInfo->class === $serviceName) {
+                    $aliases[] = $serviceInfo->name;
                 }
             }
             
@@ -183,15 +182,7 @@ class InspectServiceCommand extends Command
         $io->section('Hidden Dependencies Analysis');
         
         try {
-            $service = $this->serviceManager->get($serviceName);
-            
-            if (!is_object($service)) {
-                $io->note('Service is not an object, cannot analyze hidden dependencies.');
-                return;
-            }
-
-            $reflection = new \ReflectionClass($service);
-            $hiddenDeps = $this->analyzeHiddenDependencies($reflection);
+            $hiddenDeps = $this->serviceReader->getHiddenDependencies($serviceName);
             
             if (empty($hiddenDeps)) {
                 $io->success('No hidden dependencies found using SR\\Di.');
@@ -202,10 +193,10 @@ class InspectServiceCommand extends Command
             
             foreach ($hiddenDeps as $dep) {
                 $io->definitionList([
-                    'Service' => $dep['service'],
-                    'File' => $dep['file'],
-                    'Line' => $dep['line'],
-                    'Context' => $dep['context'],
+                    'Service' => $dep->service,
+                    'File' => $dep->file,
+                    'Line' => $dep->line,
+                    'Context' => $dep->context,
                 ]);
                 $io->newLine();
             }
@@ -215,128 +206,4 @@ class InspectServiceCommand extends Command
         }
     }
 
-    private function analyzeHiddenDependencies(\ReflectionClass $reflection): array
-    {
-        $hiddenDeps = [];
-        
-        // Check if class extends SR\Di\AbstractDi or uses SR\Di\DiTrait
-        if (!$this->usesSRDi($reflection)) {
-            return $hiddenDeps;
-        }
-        
-        // Analyze current class and all parent classes
-        $classesToAnalyze = [$reflection];
-        
-        // Add parent classes
-        $parent = $reflection->getParentClass();
-        while ($parent) {
-            $classesToAnalyze[] = $parent;
-            $parent = $parent->getParentClass();
-        }
-
-        foreach ($classesToAnalyze as $class) {
-            $filePath = $class->getFileName();
-            if (!$filePath || !file_exists($filePath)) {
-                continue;
-            }
-
-            $deps = $this->scanFileForHiddenDeps($filePath, $class->getName());
-            $hiddenDeps = array_merge($hiddenDeps, $deps);
-        }
-
-        return $hiddenDeps;
-    }
-
-    private function usesSRDi(\ReflectionClass $reflection): bool
-    {
-        // Check if extends SR\Di\AbstractDi
-        $parent = $reflection;
-        while ($parent) {
-            if ($parent->getName() === 'SR\Di\AbstractDi') {
-                return true;
-            }
-            $parent = $parent->getParentClass();
-        }
-
-        // Check if uses SR\Di\DiTrait
-        $traits = $this->getAllTraits($reflection);
-        foreach ($traits as $trait) {
-            if ($trait->getName() === 'SR\Di\DiTrait') {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private function getAllTraits(\ReflectionClass $reflection): array
-    {
-        $traits = [];
-        
-        // Get traits from current class
-        $traits = array_merge($traits, $reflection->getTraits());
-        
-        // Get traits from parent classes
-        $parent = $reflection->getParentClass();
-        while ($parent) {
-            $traits = array_merge($traits, $parent->getTraits());
-            $parent = $parent->getParentClass();
-        }
-
-        return $traits;
-    }
-
-    private function scanFileForHiddenDeps(string $filePath, string $className): array
-    {
-        $hiddenDeps = [];
-        $content = file_get_contents($filePath);
-        
-        if (!$content) {
-            return $hiddenDeps;
-        }
-
-        $lines = explode("\n", $content);
-        
-        // Pattern to match $this->getDi() calls
-        $pattern = '/\$this\s*->\s*getDi\s*\(\s*[\'"]([^\'"]+)[\'"]?\s*\)/';
-        
-        foreach ($lines as $lineNumber => $line) {
-            if (preg_match_all($pattern, $line, $matches, PREG_OFFSET_CAPTURE)) {
-                foreach ($matches[1] as $match) {
-                    $serviceName = $match[0];
-                    $offset = $match[1];
-                    
-                    // Get context around the match
-                    $context = $this->getContextAroundMatch($line, $offset);
-                    
-                    $hiddenDeps[] = [
-                        'service' => $serviceName,
-                        'file' => $filePath,
-                        'line' => $lineNumber + 1,
-                        'context' => $context,
-                    ];
-                }
-            }
-        }
-
-        return $hiddenDeps;
-    }
-
-    private function getContextAroundMatch(string $line, int $offset, int $contextLength = 50): string
-    {
-        $start = max(0, $offset - $contextLength);
-        $end = min(strlen($line), $offset + $contextLength);
-        
-        $context = substr($line, $start, $end - $start);
-        
-        // Add ellipsis if we truncated
-        if ($start > 0) {
-            $context = '...' . $context;
-        }
-        if ($end < strlen($line)) {
-            $context = $context . '...';
-        }
-        
-        return trim($context);
-    }
 }

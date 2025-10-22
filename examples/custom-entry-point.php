@@ -114,5 +114,5 @@ $config = [
 $serviceManager = new ServiceManager($config);
 
 // Create and run the application
-$application = new Application($serviceManager);
+$application = Application::createWithLaminasServiceManager($serviceManager);
 $application->run();
