@@ -22,7 +22,7 @@ interface ServiceReaderInterface
      * @param string|null $filter
      * @return ServiceInfo[]
      */
-    public function getServices(?string $filter = null): array;
+    public function getServices(?string $filter = null, ?string $type = null): array;
 
     /**
      * Get services filtered by type
@@ -31,15 +31,6 @@ interface ServiceReaderInterface
      * @return ServiceInfo[]
      */
     public function getServicesByType(?string $type = null): array;
-
-    /**
-     * Get services filtered by name pattern and type
-     *
-     * @param string|null $filter
-     * @param string|null $type
-     * @return ServiceInfo[]
-     */
-    public function getServices(?string $filter = null, ?string $type = null): array;
 
     /**
      * Get a specific service by name
