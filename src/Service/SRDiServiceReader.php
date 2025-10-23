@@ -12,7 +12,8 @@ use Smoobu\LaminasServiceScanner\Interface\ServiceContainerInterface;
 class SRDiServiceReader implements ServiceReaderInterface
 {
     public function __construct(
-        private ServiceContainerInterface $container
+        private ServiceContainerInterface $container,
+        private ScanFileForHiddenDeps $scanFileForHiddenDeps
     ) {}
 
     public function getAllServices(): array
@@ -121,7 +122,7 @@ class SRDiServiceReader implements ServiceReaderInterface
                     continue;
                 }
 
-                $deps = $this->scanFileForHiddenDeps($filePath, $class->getName());
+                $deps = $this->scanFileForHiddenDeps->scan($filePath, $class->getName());
                 $hiddenDeps = array_merge($hiddenDeps, $deps);
             }
 
@@ -242,57 +243,4 @@ class SRDiServiceReader implements ServiceReaderInterface
         return $traits;
     }
 
-    private function scanFileForHiddenDeps(string $filePath, string $className): array
-    {
-        $hiddenDeps = [];
-        $content = file_get_contents($filePath);
-        
-        if (!$content) {
-            return $hiddenDeps;
-        }
-
-        $lines = explode("\n", $content);
-        
-        // Pattern to match $this->getDi() calls
-        $pattern = '/\$this\s*->\s*getDi\s*\(\s*[\'"]([^\'"]+)[\'"]?\s*\)/';
-        
-        foreach ($lines as $lineNumber => $line) {
-            if (preg_match_all($pattern, $line, $matches, PREG_OFFSET_CAPTURE)) {
-                foreach ($matches[1] as $match) {
-                    $serviceName = $match[0];
-                    $offset = $match[1];
-                    
-                    // Get context around the match
-                    $context = $this->getContextAroundMatch($line, $offset);
-                    
-                    $hiddenDeps[] = new HiddenDependency(
-                        service: $serviceName,
-                        file: $filePath,
-                        line: $lineNumber + 1,
-                        context: $context
-                    );
-                }
-            }
-        }
-
-        return $hiddenDeps;
-    }
-
-    private function getContextAroundMatch(string $line, int $offset, int $contextLength = 50): string
-    {
-        $start = max(0, $offset - $contextLength);
-        $end = min(strlen($line), $offset + $contextLength);
-        
-        $context = substr($line, $start, $end - $start);
-        
-        // Add ellipsis if we truncated
-        if ($start > 0) {
-            $context = '...' . $context;
-        }
-        if ($end < strlen($line)) {
-            $context = $context . '...';
-        }
-        
-        return trim($context);
-    }
 }
