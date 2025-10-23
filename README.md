@@ -4,13 +4,14 @@ A command-line tool for inspecting and displaying all registered services in a L
 
 ## Features
 
-- List all registered services in a Laminas container
+- List all registered services in a Laminas or SR/Di container
 - Filter services by name pattern or type
 - Inspect individual services in detail
 - Show service types (service, alias, factory, invokable)
 - Display reflection information for service instances
 - Find aliases pointing to specific services
 - **Hidden Dependencies Analysis**: Scan for SR\Di usage and find hidden dependencies via `$this->getDi()` calls
+- **Multi-Container Support**: Works with both Laminas ServiceManager and SR/Di containers
 
 ## Installation
 
@@ -48,6 +49,8 @@ composer require smoobu/laminas-services-scanner-cli
 
 ## Integration with Your Application
 
+### Laminas ServiceManager
+
 To use this tool with your existing Laminas application, you need to create a custom entry point that uses your configured ServiceManager:
 
 ```php
@@ -65,6 +68,28 @@ $serviceManager = ServiceManagerFactory::create();
 
 // Create and run the application
 $application = Application::createWithLaminasServiceManager($serviceManager);
+$application->run();
+```
+
+### SR/Di Container
+
+To use this tool with an SR/Di container:
+
+```php
+#!/usr/bin/env php
+<?php
+
+use Smoobu\LaminasServiceScanner\Application;
+use SR\Di\Di;
+
+// Include your application's autoloader
+require_once __DIR__ . '/vendor/autoload.php';
+
+// Get your configured SR/Di container
+$di = YourApp\DiFactory::create();
+
+// Create and run the application
+$application = Application::createWithSRDi($di);
 $application->run();
 ```
 
@@ -191,7 +216,7 @@ Context:  ...$db = $this->getDi('database');...
 ## Requirements
 
 - PHP 7.4 or higher
-- Laminas ServiceManager 3.0 or higher
+- Laminas ServiceManager (any version) or SR/Di container
 - Symfony Console 6.0 or higher
 
 ## License

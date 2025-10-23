@@ -8,6 +8,8 @@ use Smoobu\LaminasServiceScanner\Interface\ServiceContainerInterface;
 use Smoobu\LaminasServiceScanner\Interface\ServiceReaderInterface;
 use Smoobu\LaminasServiceScanner\Service\LaminasServiceContainer;
 use Smoobu\LaminasServiceScanner\Service\LaminasServiceReader;
+use Smoobu\LaminasServiceScanner\Service\SRDiServiceContainer;
+use Smoobu\LaminasServiceScanner\Service\SRDiServiceReader;
 use Symfony\Component\Console\Application as BaseApplication;
 use Symfony\Component\Console\Command\Command;
 
@@ -49,5 +51,15 @@ class Application extends BaseApplication
     {
         $container = new LaminasServiceContainer($serviceManager);
         return new self($container);
+    }
+
+    /**
+     * Create application with SR/Di container
+     */
+    public static function createWithSRDi($di): self
+    {
+        $container = new SRDiServiceContainer($di);
+        $reader = new SRDiServiceReader($container);
+        return new self($container, $reader);
     }
 }
